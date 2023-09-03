@@ -23,7 +23,7 @@ import pickle
 from gtts import gTTS
 import uuid
 import requests
-from transformers import AlbertTokenizer, AlbertForSequenceClassification
+from transformers import AlbertTokenizer, AlbertForSequenceClassification, pipeline
 import logging
 from datetime import datetime
 
@@ -39,7 +39,7 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def getCategory(response):
-    if response == 0:
+    if response == "LABEL_0":
         return '0_最初の挨拶'
     elif response == 1:
         return '1_繋ぎ確認'
@@ -51,7 +51,7 @@ def getCategory(response):
         return '4_現在のやり取り内容の確認'
     elif response == 5:
         return '5_取引有無の確認'
-    elif response == 6:
+    elif response == "LABEL_6":
         return '6_営業ですか'
     elif response == 7:
         return '7_前任退社'
@@ -107,7 +107,7 @@ def generatedResponse(response):
         return '弊社キカガクというAI関連の法人サービスを扱っておりまして、そちらのAI研修の件です'
     elif response == 5:
         return 'これから契約というタイミングです'
-    elif response == 6:
+    elif response == "LABEL_6":
         return 'はい、営業です。我々がキカガクというAI関連の法人サービスを扱っており日本国内では最大級の案件数を誇るのですが、昨今の情勢の中でAIに対する温度感は皆様非常に高くなっているので、貴社もかなりこの領域を調べてらっしゃるようでしたのでお電話させていただきました。'
     elif response == 7:
         return 'そちら、最新のご状況を存じ上げず失礼致しました。後任者様をご共有いただく前にご退職なさったみたいですので、後任の方にお繋ぎいただけますでしょうか'
@@ -150,6 +150,9 @@ def generatedResponse(response):
     else:
         return 'Error'    
 
+def get_label(data):
+    return data[0]['label']
+
 model_path = './src/model_files'
 tokenizer_path = './src/tokenizer_files'
 quantized_model_path = "quantized_model.pth" 
@@ -168,27 +171,14 @@ albert_model.load_state_dict(torch.load(quantized_model_path, map_location=torch
 albert_model.eval()
 
 def predict(text):
-    app.logger.debug("現在の日時11: %s", datetime.now())
-    # テキストのエンコード
-    input_encodings = albert_tokenizer(
-        text,
-        return_tensors='pt',
-        max_length=70, 
-        padding='max_length',
-        truncation=True
-    )
-    app.logger.debug("現在の日時12: %s", datetime.now())
-
-    # 推論
     with torch.no_grad():
+        app.logger.debug("現在の日時11: %s", datetime.now())
+        classifier = pipeline('text-classification', model=albert_model.to('cpu'), tokenizer=albert_tokenizer)
+        app.logger.debug("現在の日時12: %s", datetime.now())
+        result = classifier(text)
         app.logger.debug("現在の日時13: %s", datetime.now())
-        outputs = albert_model(**input_encodings)
+        predicted_label = get_label(result)
         app.logger.debug("現在の日時14: %s", datetime.now())
-        logits = outputs.logits
-        app.logger.debug("現在の日時15: %s", datetime.now())
-        predicted_label = torch.argmax(logits, dim=1).cpu().numpy()[0]
-        app.logger.debug("現在の日時16: %s", datetime.now())
-        
     return predicted_label
 
 @app.route('/', methods=['GET', 'POST'])
